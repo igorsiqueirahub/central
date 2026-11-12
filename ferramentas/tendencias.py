@@ -103,8 +103,25 @@ def ler_trends(horas):
             if re.search(r"unusual traffic|tráfego incomum|not a robot|não sou um robô|sorry", texto, re.I):
                 return {"status": "bloqueado", "aviso": "O Google pediu verificação de robô; o Trends ficou de fora nesta rodada.", "itens": []}
             return {"status": "falhou", "aviso": "A tabela do Trends não carregou nesta rodada.", "amostra": texto, "itens": []}
+        # a página mostra primeiro todas as categorias e só depois aplica o filtro de Esportes:
+        # espera a rede sossegar e as linhas pararem de mudar antes de ler
+        try:
+            pagina.wait_for_load_state("networkidle", timeout=30000)
+        except Exception:
+            pass
+        anterior, estavel = None, 0
+        for _ in range(20):
+            pagina.wait_for_timeout(1500)
+            atual = pagina.eval_on_selector_all("tr", "rs => rs.map(r => r.innerText).join('|')")
+            estavel = estavel + 1 if atual == anterior else 0
+            anterior = atual
+            if estavel >= 3:
+                break
+        filtro = pagina.inner_text("body")
         linhas = pagina.eval_on_selector_all("tr", "rs => rs.map(r => r.innerText)")
         nav.close()
+        if "Esportes" not in filtro:
+            return {"status": "falhou", "aviso": "O filtro de Esportes não foi aplicado nesta rodada.", "itens": []}
     itens = []
     for bruto in linhas:
         partes = [x.strip() for x in bruto.split("\n") if x.strip()]
