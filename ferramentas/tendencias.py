@@ -91,34 +91,37 @@ def ler_trends(horas):
         nav = p.chromium.launch()
         pagina = nav.new_page(locale="pt-BR", user_agent=UA["User-Agent"], timezone_id="America/Sao_Paulo")
         pagina.goto(url, wait_until="domcontentloaded", timeout=60000)
-        if os.environ.get("DEBUG_TRENDS"):
-            pagina.wait_for_timeout(15000)
-            print("DEBUG url:", pagina.url, "| título:", pagina.title())
-            print("DEBUG contagens:", pagina.evaluate("""() => ({tr: document.querySelectorAll('tr').length,
-                rowRole: document.querySelectorAll('[role=row]').length, table: document.querySelectorAll('table').length,
-                botoes: [...document.querySelectorAll('button')].slice(0, 12).map(b => b.innerText.trim()).filter(Boolean)})"""))
-            print("DEBUG texto:", pagina.inner_text("body")[:2500].replace("\n", " | "))
         try:
-            pagina.wait_for_selector("table tbody tr, [role=row]", timeout=30000)
+            # a tabela tem uma linha-modelo escondida: espera aparecer uma linha com volume ("mil+" ou "+")
+            pagina.wait_for_function(
+                """() => [...document.querySelectorAll('tr')].some(r => /\\d[\\d.,]*\\s*(mil|mi)?\\+/.test(r.innerText))
+                      || /Nenhuma tendência|Não há tendências|No trends/i.test(document.body.innerText)""",
+                timeout=45000)
         except Exception:
             texto = pagina.inner_text("body")[:600]
             nav.close()
             if re.search(r"unusual traffic|tráfego incomum|not a robot|não sou um robô|sorry", texto, re.I):
                 return {"status": "bloqueado", "aviso": "O Google pediu verificação de robô; o Trends ficou de fora nesta rodada.", "itens": []}
             return {"status": "falhou", "aviso": "A tabela do Trends não carregou nesta rodada.", "amostra": texto, "itens": []}
-        linhas = pagina.eval_on_selector_all("table tbody tr", "rs => rs.map(r => r.innerText)")
+        linhas = pagina.eval_on_selector_all("tr", "rs => rs.map(r => r.innerText)")
         nav.close()
     itens = []
     for bruto in linhas:
         partes = [x.strip() for x in bruto.split("\n") if x.strip()]
-        if not partes:
+        i_vol = next((i for i, x in enumerate(partes) if re.fullmatch(r"[\d.,]+\s*(mil|mi)?\+", x)), None)
+        if i_vol is None or i_vol == 0:
             continue
         termo = partes[0]
-        volume = next((x for x in partes if re.search(r"\d.*(mil|mi|\+)", x) and len(x) < 20), "")
-        inicio = next((x for x in partes if re.match(r"(há|ha)\s", x, re.I) or re.search(r"\b(hora|horas|minuto|minutos)\b", x)), "")
-        ativo = any(re.search(r"\bAtiv[oa]\b", x) for x in partes)
-        ligados = next((x for x in partes if x.count(",") >= 1 and x != termo and len(x) < 200), "")
-        itens.append({"termo": termo, "volume": volume, "inicio": inicio, "ativo": ativo, "relacionados": ligados})
+        volume = partes[i_vol]
+        alta = next((x for x in partes[i_vol:i_vol + 3] if x.endswith("%")), "")
+        inicio = next((x for x in partes if re.match(r"há\s", x, re.I)), "")
+        ativo = "Ativa" in partes or "Ativo" in partes
+        durou = next((x for x in partes if x.startswith("Durou")), "")
+        icones = {"arrow_upward", "trending_up", "timelapse", "Ativa", "Ativo"}
+        apos = partes[partes.index(durou) + 1:] if durou else (partes[partes.index("Ativa") + 1:] if "Ativa" in partes else [])
+        relacionados = [x for x in apos if x not in icones and not re.match(r"Mais \d+", x) and x != termo][:4]
+        itens.append({"termo": termo, "volume": volume, "alta": alta, "inicio": inicio, "ativo": ativo, "durou": durou,
+                      "relacionados": ", ".join(relacionados)})
     return {"status": "ok", "itens": itens[:25]}
 
 
