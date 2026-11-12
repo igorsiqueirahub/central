@@ -1,0 +1,51 @@
+# Tendências de hoje da Central do Igor (pedido do Igor em 2026-11-12).
+# Roda sozinho no GitHub, sem depender do computador, de duas em duas horas das 7h às 23h de Brasília (10h a 2h UTC).
+# Grava tendencias.json cifrado com a chave da Central. A senha fica no segredo CENTRAL_SENHA do repositório.
+name: Tendencias de hoje
+
+on:
+  schedule:
+    - cron: "0 10-23/2 * * *"   # 7h, 9h, 11h, 13h, 15h, 17h e 19h em Brasília
+    - cron: "0 0,2 * * *"       # 21h e 23h em Brasília
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tendencias
+  cancel-in-progress: false
+
+jobs:
+  tendencias:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instala o navegador invisível e a cifra
+        run: |
+          pip install --quiet playwright==1.48.0 cryptography==43.0.3
+          python -m playwright install --with-deps chromium
+
+      - name: Coleta Trends e noticiário e grava cifrado
+        env:
+          CENTRAL_SENHA: ${{ secrets.CENTRAL_SENHA }}
+        run: python ferramentas/tendencias.py
+
+      - name: Publica o arquivo cifrado
+        run: |
+          git config user.name "igorsiqueirahub"
+          git config user.email "345459423+igorsiqueirahub@users.noreply.github.com"
+          git add tendencias.json
+          if git diff --cached --quiet; then echo "Nada mudou"; exit 0; fi
+          git commit -m "Tendências de hoje"
+          for i in 1 2 3; do
+            git pull --rebase origin main && git push origin main && exit 0
+            sleep 10
+          done
+          exit 1
