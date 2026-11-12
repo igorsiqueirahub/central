@@ -54,7 +54,7 @@ CLUBES = {
     "Vasco": ("https://ge.globo.com/futebol/times/vasco/", r"Vasco|Cruzmaltino"),
     "Vitória": ("https://ge.globo.com/ba/futebol/times/vitoria/", r"Vitória"),
 }
-PALAVRAS_VAZIAS = set("de da do das dos e o a os as x vs em no na nos nas para pra com por que hoje ao aos".split())
+PALAVRAS_VAZIAS = set("de da do das dos e o a os as x vs em no na nos nas para pra com por que hoje ao aos onde assistir resultado placar ao vivo".split())
 
 
 # ---------------------------------------------------------------- utilidades
@@ -245,7 +245,9 @@ def cruzar(trends, noticias):
     for it in trends:
         cobertura = {"UOL": [], "ge": [], "ESPN": []}
         for n in noticias:
-            if cobre(it["termo"], n["titulo"]) or (it.get("relacionados") and any(cobre(r, n["titulo"]) for r in it["relacionados"].split(",")[:3] if len(r.strip()) > 3)):
+            # termos relacionados só contam quando têm duas palavras significativas ou mais ("futebol hoje" não conta)
+            relacionados = [r for r in (it.get("relacionados") or "").split(",")[:3] if len(tokens(r)) >= 2 and "hoje" not in norm(r)]
+            if cobre(it["termo"], n["titulo"]) or any(cobre(r, n["titulo"]) for r in relacionados):
                 cobertura[n["fonte"]].append({"titulo": n["titulo"], "url": n["url"]})
         total = {k: len(v) for k, v in cobertura.items()}
         saida.append({**it, "cobertura": {k: v[:3] for k, v in cobertura.items()}, "contagem": total,
