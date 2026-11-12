@@ -7,7 +7,12 @@ on:
   schedule:
     - cron: "0 10-23/2 * * *"   # 7h, 9h, 11h, 13h, 15h, 17h e 19h em Brasília
     - cron: "0 0,2 * * *"       # 21h e 23h em Brasília
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: "Mostra no registro o que o navegador viu no Trends"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -35,6 +40,7 @@ jobs:
       - name: Coleta Trends e noticiário e grava cifrado
         env:
           CENTRAL_SENHA: ${{ secrets.CENTRAL_SENHA }}
+          DEBUG_TRENDS: ${{ inputs.debug }}
         run: python ferramentas/tendencias.py
 
       - name: Publica o arquivo cifrado

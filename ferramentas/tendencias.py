@@ -49,7 +49,7 @@ CLUBES = {
     "Mirassol": ("https://ge.globo.com/sp/tem-esporte/futebol/times/mirassol/", r"Mirassol"),
     "Palmeiras": ("https://ge.globo.com/futebol/times/palmeiras/", r"Palmeiras|Verdão"),
     "Remo": ("https://ge.globo.com/pa/futebol/times/remo/", r"\bRemo\b"),
-    "Santos": ("https://ge.globo.com/sp/santos-e-regiao/futebol/times/santos/", r"\bSantos\b"),
+    "Santos": ("https://ge.globo.com/sp/santos-e-regiao/futebol/times/santos/", r"(?<![A-ZÁÉÍÓÚ][a-záéíóúâêôãõç]{2} )(?<![A-ZÁÉÍÓÚ][a-záéíóúâêôãõç]{3} )(?<![A-ZÁÉÍÓÚ][a-záéíóúâêôãõç]{4} )(?<![A-ZÁÉÍÓÚ][a-záéíóúâêôãõç]{5} )(?<![A-ZÁÉÍÓÚ][a-záéíóúâêôãõç]{6} )(?<![A-ZÁÉÍÓÚ][a-záéíóúâêôãõç]{7} )\bSantos\b|\bPeixe\b"),
     "São Paulo": ("https://ge.globo.com/futebol/times/sao-paulo/", r"São Paulo|Tricolor paulista"),
     "Vasco": ("https://ge.globo.com/futebol/times/vasco/", r"Vasco|Cruzmaltino"),
     "Vitória": ("https://ge.globo.com/ba/futebol/times/vitoria/", r"Vitória"),
@@ -91,8 +91,15 @@ def ler_trends(horas):
         nav = p.chromium.launch()
         pagina = nav.new_page(locale="pt-BR", user_agent=UA["User-Agent"], timezone_id="America/Sao_Paulo")
         pagina.goto(url, wait_until="domcontentloaded", timeout=60000)
+        if os.environ.get("DEBUG_TRENDS"):
+            pagina.wait_for_timeout(15000)
+            print("DEBUG url:", pagina.url, "| título:", pagina.title())
+            print("DEBUG contagens:", pagina.evaluate("""() => ({tr: document.querySelectorAll('tr').length,
+                rowRole: document.querySelectorAll('[role=row]').length, table: document.querySelectorAll('table').length,
+                botoes: [...document.querySelectorAll('button')].slice(0, 12).map(b => b.innerText.trim()).filter(Boolean)})"""))
+            print("DEBUG texto:", pagina.inner_text("body")[:2500].replace("\n", " | "))
         try:
-            pagina.wait_for_selector("table tbody tr", timeout=30000)
+            pagina.wait_for_selector("table tbody tr, [role=row]", timeout=30000)
         except Exception:
             texto = pagina.inner_text("body")[:600]
             nav.close()
@@ -163,7 +170,7 @@ def google_portal(site, rotulo, termo, apelido=None, nome_clube=None, horas=24):
     for item in re.findall(r"<item>(.*?)</item>", xml, re.S):
         quando = parsedate_to_datetime(re.search(r"<pubDate>(.*?)</pubDate>", item).group(1))
         titulo = re.sub(r" - (UOL|ESPN Brasil|ESPN|BOL)$", "", limpar(re.search(r"<title>(.*?)</title>", item, re.S).group(1)))
-        if quando < corte or (apelido and not re.search(apelido, titulo, re.I)):
+        if quando < corte or (apelido and not re.search(apelido, titulo)):
             continue
         saida.append({"fonte": rotulo, "titulo": titulo, "url": "", "quando": quando.isoformat(), "dia": False, "clube": nome_clube})
     return saida
@@ -231,7 +238,7 @@ def clubes_em_pauta(noticias):
     corte = agora() - timedelta(hours=8)
     placar = []
     for nome, (_, apelido) in CLUBES.items():
-        recentes = [n for n in noticias if (n.get("clube") == nome or re.search(apelido, n["titulo"], re.I))
+        recentes = [n for n in noticias if (n.get("clube") == nome or re.search(apelido, n["titulo"]))
                     and (not n["dia"] and datetime.fromisoformat(n["quando"]) >= corte or n["dia"] and datetime.fromisoformat(n["quando"]).date() == agora().astimezone(BRT).date())]
         if recentes:
             por = {f: sum(1 for n in recentes if n["fonte"] == f) for f in ("UOL", "ge", "ESPN")}
